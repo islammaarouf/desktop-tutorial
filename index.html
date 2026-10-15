@@ -206,6 +206,13 @@ header {
 #recBar.on { display: flex; }
 #recDot { width: 9px; height: 9px; border-radius: 50%; background: #ff5148; animation: blink 1s infinite; }
 #recBar .hint { margin-inline-start: auto; color: var(--text-dim); font-size: 12px; }
+.header-text { flex: 1; min-width: 0; }
+.header-text p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hbtn { margin-inline-start: 2px; padding: 8px 12px; border-radius: 20px; border: 1px solid var(--border-gold); background: var(--bg2); color: var(--gold); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; }
+.hbtn:active { transform: scale(.95); }
+.hbtn.on { background: linear-gradient(135deg, #c9a24b, #a8863a); color: #10151f; font-weight: 600; }
+#talkBtn.on { animation: pulse 1.6s infinite; }
+.replay { cursor: pointer; margin-inline-start: 8px; opacity: .8; }
 footer {
   text-align: center;
   font-size: 11px;
@@ -223,6 +230,8 @@ footer {
       <h1>آدم</h1>
       <p>مساعدك المالي والشخصي — متاح دائماً</p>
     </div>
+    <button id="voiceBtn" class="hbtn" title="رد صوتي">🔊 صوت</button>
+    <button id="talkBtn" class="hbtn" title="وضع المحادثة الصوتية">🎧 محادثة</button>
   </header>
 
   <div id="messages"></div>
@@ -271,6 +280,31 @@ const recBar = document.getElementById('recBar');
 const recTime = document.getElementById('recTime');
 const attachBtn = document.getElementById('attachBtn');
 const fileInput = document.getElementById('fileInput');
+const voiceBtn = document.getElementById('voiceBtn');
+const talkBtn = document.getElementById('talkBtn');
+let voiceOn = false; try { voiceOn = localStorage.getItem('adamVoice') === '1'; } catch (e) {}
+let convo = false, noSpeech = 0, vadTimer = null, audioCtx = null;
+const player = new Audio();
+function unlockAudio() { try { player.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; player.play().catch(() => {}); } catch (e) {} }
+function paintBtns() { voiceBtn.classList.toggle('on', voiceOn || convo); voiceBtn.textContent = (voiceOn || convo) ? '🔊 صوت' : '🔇 صوت'; talkBtn.classList.toggle('on', convo); talkBtn.textContent = convo ? '⏹ وقف المحادثة' : '🎧 محادثة'; }
+paintBtns();
+voiceBtn.addEventListener('click', () => { if (convo) return; unlockAudio(); voiceOn = !voiceOn; try { localStorage.setItem('adamVoice', voiceOn ? '1' : '0'); } catch (e) {} if (!voiceOn) player.pause(); paintBtns(); });
+talkBtn.addEventListener('click', () => {
+  if (convo) { endConvo(); return; }
+  unlockAudio(); convo = true; noSpeech = 0; paintBtns();
+  addMsg('وضع المحادثة شغال — اتكلم وأنا بسمعك. دوس "وقف المحادثة" لما تخلص.', 'bot');
+  if (!(mediaRecorder && mediaRecorder.state === 'recording')) toggleRecording();
+});
+function endConvo() {
+  convo = false; paintBtns(); clearInterval(vadTimer); player.pause();
+  if (mediaRecorder && mediaRecorder.state === 'recording') { mediaRecorder.onstop = null; try { mediaRecorder.stop(); mediaRecorder.stream.getTracks().forEach(t => t.stop()); } catch (e) {} clearInterval(recTimer); recBar.classList.remove('on'); micBtn.classList.remove('recording'); }
+}
+function listenAgain() { if (convo && !(mediaRecorder && mediaRecorder.state === 'recording')) setTimeout(() => { if (convo) toggleRecording(); }, 350); }
+function playReply(b64, mime, bubble) {
+  const play = () => { player.onended = () => listenAgain(); player.onerror = () => listenAgain(); player.src = 'data:' + (mime || 'audio/mpeg') + ';base64,' + b64; return player.play(); };
+  if (bubble) { const r = document.createElement('span'); r.className = 'replay'; r.textContent = '🔊'; r.onclick = () => { player.onended = null; play().catch(() => {}); }; bubble.appendChild(r); }
+  play().catch(() => { listenAgain(); });
+}
 
 attachBtn.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => {
@@ -335,13 +369,15 @@ async function send(payload) {
     const res = await fetch(CHAT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adamKey() },
-      body: JSON.stringify({ ...payload, sessionId })
+      body: JSON.stringify({ ...payload, sessionId, wantVoice: (voiceOn || convo) })
     });
     thinking.remove();
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    addMsg(data.reply || '…', 'bot');
+    const bubble = addMsg(data.reply || '…', 'bot');
+    if (data.audio && (voiceOn || convo)) playReply(data.audio, data.audioMime, bubble); else if (convo) listenAgain();
   } catch (e) {
+    if (convo) listenAgain();
     thinking.remove();
     addMsg('حصل خطأ في الاتصال — جرب تاني بعد ثواني.', 'bot error');
   }
@@ -399,17 +435,33 @@ async function toggleRecording() {
       micBtn.classList.remove('recording');
       stream.getTracks().forEach(t => t.stop());
       const blob = new Blob(chunks, { type: mime });
-      if (blob.size < 2000) { addMsg('التسجيل قصير جداً — جرب تتكلم أطول شوية.', 'bot error'); return; }
+      if (blob.size < 2000) { if (convo) { if (++noSpeech >= 3) { addMsg('مسمعتش صوت — وقفت وضع المحادثة.', 'bot'); endConvo(); } else listenAgain(); return; } addMsg('التسجيل قصير جداً — جرب تتكلم أطول شوية.', 'bot error'); return; }
       const ext = mime.includes('mp4') ? 'm4a' : 'webm';
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = String(reader.result).split(',')[1];
+        noSpeech = 0;
         addMsg('رسالة صوتية', 'user', true);
         send({ type: 'audio', audioBase64: base64, fileName: 'voice.' + ext, mimeType: mime });
       };
       reader.readAsDataURL(blob);
     };
     mediaRecorder.start();
+    clearInterval(vadTimer);
+    if (convo) {
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const src = audioCtx.createMediaStreamSource(stream), an = audioCtx.createAnalyser(); an.fftSize = 1024; src.connect(an);
+        const buf = new Uint8Array(an.fftSize); let heard = 0, quiet = 0; const t0 = Date.now();
+        vadTimer = setInterval(() => {
+          an.getByteTimeDomainData(buf); let sum = 0; for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+          const rms = Math.sqrt(sum / buf.length);
+          if (rms > 0.03) { heard++; quiet = 0; } else if (heard > 3) { quiet++; }
+          const ms = Date.now() - t0;
+          if ((heard > 3 && quiet > 7) || ms > 45000 || (heard <= 3 && ms > 9000)) { clearInterval(vadTimer); if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop(); }
+        }, 200);
+      } catch (e) {}
+    }
     recStart = Date.now();
     recTime.textContent = '0:00';
     recTimer = setInterval(() => { recTime.textContent = fmtTime((Date.now() - recStart) / 1000); }, 500);
@@ -419,7 +471,7 @@ async function toggleRecording() {
     addMsg('مش قادر أوصل للميكروفون — تأكد إنك وافقت على إذن المايك في المتصفح.', 'bot error');
   }
 }
-micBtn.addEventListener('click', toggleRecording);
+micBtn.addEventListener('click', () => { unlockAudio(); player.pause(); if (convo) { endConvo(); return; } toggleRecording(); });
 
 /* ── Welcome ─────────────────────────── */
 addMsg('أهلاً إسلام، معك آدم — مساعدك الشخصي.\nاسألني أي شيء — نص أو صوت، بالعربي أو الإنجليزي.\nدوس 🎙 واتكلم على طول.', 'bot');
