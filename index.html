@@ -281,7 +281,8 @@ fileInput.addEventListener('change', () => {
   const isAudio = f.type.startsWith('audio/');
   const reader = new FileReader();
   reader.onloadend = () => {
-    const dataUrl = String(reader.result);
+    const origUrl = String(reader.result);
+    const proceed = (dataUrl, mime) => {
     const base64 = dataUrl.split(',')[1];
     if (isImage) {
       const div = document.createElement('div');
@@ -295,7 +296,7 @@ fileInput.addEventListener('change', () => {
       messagesEl.scrollTop = messagesEl.scrollHeight;
       const caption = inputEl.value.trim();
       inputEl.value = ''; autoGrow();
-      send({ type: 'image', imageBase64: base64, mimeType: f.type, fileName: f.name, text: caption });
+      send({ type: 'image', imageBase64: base64, mimeType: mime, fileName: f.name, text: caption });
     } else if (isAudio) {
       addMsg('رسالة صوتية', 'user', true);
       send({ type: 'audio', audioBase64: base64, fileName: f.name, mimeType: f.type });
@@ -304,6 +305,8 @@ fileInput.addEventListener('change', () => {
       addMsg('آدم حالياً بيقرأ الصور والصوتيات بس — الملفات النصية قريب.', 'bot');
     }
     fileInput.value = '';
+    };
+    if (isImage) { const im = new Image(); im.onload = () => { const s = Math.min(1, 1280 / Math.max(im.width, im.height)); const cv = document.createElement('canvas'); cv.width = Math.round(im.width * s); cv.height = Math.round(im.height * s); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); proceed(cv.toDataURL('image/jpeg', 0.82), 'image/jpeg'); }; im.onerror = () => proceed(origUrl, f.type); im.src = origUrl; } else { proceed(origUrl, f.type); }
   };
   reader.readAsDataURL(f);
 });
