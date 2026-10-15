@@ -231,6 +231,7 @@ footer {
       <p>مساعدك المالي والشخصي — متاح دائماً</p>
     </div>
     <button id="voiceBtn" class="hbtn" title="رد صوتي">🔊 صوت</button>
+    <button id="egBtn" class="hbtn" title="نطق مصري من جهازك">🇪🇬 مصري</button>
     <button id="talkBtn" class="hbtn" title="وضع المحادثة الصوتية">🎧 محادثة</button>
   </header>
 
@@ -283,11 +284,22 @@ const fileInput = document.getElementById('fileInput');
 const voiceBtn = document.getElementById('voiceBtn');
 const talkBtn = document.getElementById('talkBtn');
 let voiceOn = false; try { voiceOn = localStorage.getItem('adamVoice') === '1'; } catch (e) {}
+let egOn = false; try { egOn = localStorage.getItem('adamEg') === '1'; } catch (e) {}
 let convo = false, noSpeech = 0, vadTimer = null, audioCtx = null;
 const player = new Audio();
 function unlockAudio() { try { player.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; player.play().catch(() => {}); } catch (e) {} }
 function paintBtns() { voiceBtn.classList.toggle('on', voiceOn || convo); voiceBtn.textContent = (voiceOn || convo) ? '🔊 صوت' : '🔇 صوت'; talkBtn.classList.toggle('on', convo); talkBtn.textContent = convo ? '⏹ وقف المحادثة' : '🎧 محادثة'; }
 paintBtns();
+function egSpeak(text, bubble) {
+  const ss = window.speechSynthesis; if (!ss) { listenAgain(); return false; }
+  const say = () => { ss.cancel(); const u = new SpeechSynthesisUtterance(String(text).replace(/[*_#`>]/g, '')); u.lang = 'ar-EG'; const v = ss.getVoices().find(x => /ar[-_]EG/i.test(x.lang)) || ss.getVoices().find(x => /^ar/i.test(x.lang)); if (v) u.voice = v; u.rate = 1; u.onend = u.onerror = () => listenAgain(); ss.speak(u); };
+  if (bubble) { const r = document.createElement('span'); r.className = 'replay'; r.textContent = '🔊'; r.onclick = say; bubble.appendChild(r); }
+  say(); return true;
+}
+const egBtn = document.getElementById('egBtn');
+function paintEg() { egBtn.classList.toggle('on', egOn); egBtn.textContent = egOn ? '🇪🇬 مصري ✓' : '🇪🇬 مصري'; }
+paintEg();
+egBtn.addEventListener('click', () => { egOn = !egOn; try { localStorage.setItem('adamEg', egOn ? '1' : '0'); } catch (e) {} if (egOn && window.speechSynthesis) { window.speechSynthesis.getVoices(); } else if (window.speechSynthesis) window.speechSynthesis.cancel(); paintEg(); });
 voiceBtn.addEventListener('click', () => { if (convo) return; unlockAudio(); voiceOn = !voiceOn; try { localStorage.setItem('adamVoice', voiceOn ? '1' : '0'); } catch (e) {} if (!voiceOn) player.pause(); paintBtns(); });
 talkBtn.addEventListener('click', () => {
   if (convo) { endConvo(); return; }
@@ -369,13 +381,13 @@ async function send(payload) {
     const res = await fetch(CHAT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adamKey() },
-      body: JSON.stringify({ ...payload, sessionId, wantVoice: (voiceOn || convo) })
+      body: JSON.stringify({ ...payload, sessionId, wantVoice: ((voiceOn || convo) && !egOn) })
     });
     thinking.remove();
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const bubble = addMsg(data.reply || '…', 'bot');
-    if (data.audio && (voiceOn || convo)) playReply(data.audio, data.audioMime, bubble); else if (convo) listenAgain();
+    if (egOn && (voiceOn || convo)) egSpeak(data.reply || '', bubble); else if (data.audio && (voiceOn || convo)) playReply(data.audio, data.audioMime, bubble); else if (convo) listenAgain();
   } catch (e) {
     if (convo) listenAgain();
     thinking.remove();
