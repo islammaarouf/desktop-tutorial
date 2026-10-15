@@ -244,8 +244,13 @@ footer {
 </div>
 
 <script>
+/*ADAM-KEY-START*/
+function adamKey(){ var k=''; try{ k=localStorage.getItem('adamKey')||''; }catch(e){} if(!k){ k=(window.prompt('أدخل مفتاح آدم (مرة واحدة فقط):')||'').trim(); if(k){ try{ localStorage.setItem('adamKey',k); }catch(e){} } } return k; }
+(function(){ var of=window.fetch; window.fetch=async function(u,o){ var r=await of(u,o); if(r.status===401 && String(u).indexOf('/webhook/adam-web')>-1){ try{ localStorage.removeItem('adamKey'); }catch(e){} } return r; }; })();
+/*ADAM-KEY-END*/
+
 document.addEventListener('DOMContentLoaded', function() {
-const CHAT_URL = 'https://islammaarouf.app.n8n.cloud/webhook/adam-app/chat';
+const CHAT_URL = 'https://islammaarouf.app.n8n.cloud/webhook/adam-web';
 const sessionId = 'web-' + (function () {
   try {
     const existing = window.localStorage ? localStorage.getItem('adamSession') : null;
@@ -326,7 +331,7 @@ async function send(payload) {
   try {
     const res = await fetch(CHAT_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adamKey() },
       body: JSON.stringify({ ...payload, sessionId })
     });
     thinking.remove();
