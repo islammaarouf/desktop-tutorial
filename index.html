@@ -231,7 +231,7 @@ footer {
       <p>مساعدك المالي والشخصي — متاح دائماً</p>
     </div>
     <button id="voiceBtn" class="hbtn" title="رد صوتي">🔊 صوت</button>
-    <button id="egBtn" class="hbtn" title="نطق مصري من جهازك">🇪🇬 مصري</button>
+    <button id="egBtn" class="hbtn" title="نطق مصري من جهازك">🇪🇬 مصري</button><small style="opacity:.6">v3</small>
     <button id="talkBtn" class="hbtn" title="وضع المحادثة الصوتية">🎧 محادثة</button>
   </header>
 
@@ -313,9 +313,11 @@ function endConvo() {
 }
 function listenAgain() { if (convo && !(mediaRecorder && mediaRecorder.state === 'recording')) setTimeout(() => { if (convo) toggleRecording(); }, 350); }
 function playReply(b64, mime, bubble) {
-  const play = () => { player.onended = () => listenAgain(); player.onerror = () => listenAgain(); player.src = 'data:' + (mime || 'audio/mpeg') + ';base64,' + b64; return player.play(); };
-  if (bubble) { const r = document.createElement('span'); r.className = 'replay'; r.textContent = '🔊'; r.onclick = () => { player.onended = null; play().catch(() => {}); }; bubble.appendChild(r); }
-  play().catch(() => { listenAgain(); });
+  let url = null;
+  try { const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); url = URL.createObjectURL(new Blob([u8], { type: mime || 'audio/mpeg' })); } catch (e) {}
+  const play = () => { player.onended = () => listenAgain(); player.onerror = () => listenAgain(); player.src = url || ('data:' + (mime || 'audio/mpeg') + ';base64,' + b64); player.muted = false; player.volume = 1; return player.play(); };
+  const mk = (label, big) => { if (!bubble) return; const r = document.createElement('span'); r.className = 'replay'; r.textContent = label; if (big) r.style.cssText = 'display:block;margin-top:6px;padding:5px 10px;border-radius:14px;background:rgba(127,127,127,.25);font-size:13px;'; r.onclick = () => { player.onended = null; play().catch(() => {}); if (big) r.remove(); }; bubble.appendChild(r); };
+  play().then(() => mk('🔊', false)).catch(() => { mk('🔊 اضغط للتشغيل (المتصفح منع التشغيل التلقائي)', true); listenAgain(); });
 }
 
 attachBtn.addEventListener('click', () => fileInput.click());
