@@ -231,7 +231,7 @@ footer {
       <p>مساعدك المالي والشخصي — متاح دائماً</p>
     </div>
     <button id="voiceBtn" class="hbtn" title="رد صوتي">🔊 صوت</button>
-    <button id="egBtn" class="hbtn" title="نطق مصري من جهازك">🇪🇬 مصري</button><small style="opacity:.6">v3</small>
+    <button id="egBtn" class="hbtn" title="نطق مصري من جهازك">🇪🇬 مصري</button><small style="opacity:.6">v4</small>
     <button id="talkBtn" class="hbtn" title="وضع المحادثة الصوتية">🎧 محادثة</button>
   </header>
 
@@ -315,9 +315,15 @@ function listenAgain() { if (convo && !(mediaRecorder && mediaRecorder.state ===
 function playReply(b64, mime, bubble) {
   let url = null;
   try { const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); url = URL.createObjectURL(new Blob([u8], { type: mime || 'audio/mpeg' })); } catch (e) {}
-  const play = () => { player.onended = () => listenAgain(); player.onerror = () => listenAgain(); player.src = url || ('data:' + (mime || 'audio/mpeg') + ';base64,' + b64); player.muted = false; player.volume = 1; return player.play(); };
-  const mk = (label, big) => { if (!bubble) return; const r = document.createElement('span'); r.className = 'replay'; r.textContent = label; if (big) r.style.cssText = 'display:block;margin-top:6px;padding:5px 10px;border-radius:14px;background:rgba(127,127,127,.25);font-size:13px;'; r.onclick = () => { player.onended = null; play().catch(() => {}); if (big) r.remove(); }; bubble.appendChild(r); };
-  play().then(() => mk('🔊', false)).catch(() => { mk('🔊 اضغط للتشغيل (المتصفح منع التشغيل التلقائي)', true); listenAgain(); });
+  const el = document.createElement('audio');
+  el.controls = true; el.preload = 'auto'; el.setAttribute('playsinline', ''); el.style.cssText = 'display:block;width:100%;max-width:260px;margin-top:8px;';
+  el.src = url || ('data:' + (mime || 'audio/mpeg') + ';base64,' + b64);
+  el.onended = () => listenAgain();
+  if (bubble) bubble.appendChild(el);
+  player.pause();
+  const p = el.play();
+  if (p && p.catch) p.catch(() => { listenAgain(); });
+  messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 attachBtn.addEventListener('click', () => fileInput.click());
