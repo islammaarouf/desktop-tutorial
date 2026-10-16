@@ -231,7 +231,7 @@ footer {
       <p>مساعدك المالي والشخصي — متاح دائماً</p>
     </div>
     <button id="voiceBtn" class="hbtn" title="رد صوتي">🔊 صوت</button>
-    <button id="egBtn" class="hbtn" title="نطق مصري من جهازك">🇪🇬 مصري</button><small style="opacity:.6">v4</small>
+    <button id="egBtn" class="hbtn" title="نطق مصري من جهازك">🇪🇬 مصري</button><small style="opacity:.6">v5</small>
     <button id="talkBtn" class="hbtn" title="وضع المحادثة الصوتية">🎧 محادثة</button>
   </header>
 
@@ -287,7 +287,11 @@ let voiceOn = false; try { voiceOn = localStorage.getItem('adamVoice') === '1'; 
 let egOn = false; try { egOn = localStorage.getItem('adamEg') === '1'; } catch (e) {}
 let convo = false, noSpeech = 0, vadTimer = null, audioCtx = null;
 const player = new Audio();
-function unlockAudio() { try { player.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; player.play().catch(() => {}); } catch (e) {} }
+var outCtx = null;
+function unlockAudio() {
+  try { player.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='; player.play().catch(() => {}); } catch (e) {}
+  try { const AC = window.AudioContext || window.webkitAudioContext; if (!outCtx) outCtx = new AC(); if (outCtx.state !== 'running') outCtx.resume(); const bf = outCtx.createBuffer(1, 1, 22050); const sr = outCtx.createBufferSource(); sr.buffer = bf; sr.connect(outCtx.destination); sr.start(0); } catch (e) {}
+}
 function paintBtns() { voiceBtn.classList.toggle('on', voiceOn || convo); voiceBtn.textContent = (voiceOn || convo) ? '🔊 صوت' : '🔇 صوت'; talkBtn.classList.toggle('on', convo); talkBtn.textContent = convo ? '⏹ وقف المحادثة' : '🎧 محادثة'; }
 paintBtns();
 function egSpeak(text, bubble) {
@@ -313,19 +317,27 @@ function endConvo() {
 }
 function listenAgain() { if (convo && !(mediaRecorder && mediaRecorder.state === 'recording')) setTimeout(() => { if (convo) toggleRecording(); }, 350); }
 function playReply(b64, mime, bubble) {
-  let url = null;
-  try { const bin = atob(b64); const u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); url = URL.createObjectURL(new Blob([u8], { type: mime || 'audio/mpeg' })); } catch (e) {}
+  let url = null; let u8 = null;
+  try { const bin = atob(b64); u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i); url = URL.createObjectURL(new Blob([u8], { type: mime || 'audio/mpeg' })); } catch (e) {}
   const el = document.createElement('audio');
   el.controls = true; el.preload = 'auto'; el.setAttribute('playsinline', ''); el.style.cssText = 'display:block;width:100%;max-width:260px;margin-top:8px;';
   el.src = url || ('data:' + (mime || 'audio/mpeg') + ';base64,' + b64);
   el.onended = () => listenAgain();
   if (bubble) bubble.appendChild(el);
-  player.pause();
-  const p = el.play();
-  if (p && p.catch) p.catch(() => { listenAgain(); });
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  const viaEl = () => { player.pause(); const p = el.play(); if (p && p.catch) p.catch(() => { listenAgain(); }); };
+  if (convo && outCtx && u8) {
+    const done = () => listenAgain();
+    try {
+      const ab = u8.buffer.slice(0);
+      Promise.resolve(outCtx.resume()).then(() => {
+        outCtx.decodeAudioData(ab, (dec) => { try { const src = outCtx.createBufferSource(); src.buffer = dec; src.connect(outCtx.destination); src.onended = done; src.start(0); } catch (e) { viaEl(); } }, () => viaEl());
+      }).catch(() => viaEl());
+    } catch (e) { viaEl(); }
+    return;
+  }
+  viaEl();
 }
-
 attachBtn.addEventListener('click', () => fileInput.click());
 fileInput.addEventListener('change', () => {
   const f = fileInput.files && fileInput.files[0];
