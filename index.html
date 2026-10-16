@@ -376,18 +376,19 @@ function addThinking() {
 
 async function send(payload) {
   sendBtn.disabled = true;
+  const wantV = voiceOn || convo || payload.type === 'audio';
   const thinking = addThinking();
   try {
     const res = await fetch(CHAT_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + adamKey() },
-      body: JSON.stringify({ ...payload, sessionId, wantVoice: ((voiceOn || convo) && !egOn) })
+      body: JSON.stringify({ ...payload, sessionId, wantVoice: (wantV && !egOn) })
     });
     thinking.remove();
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const bubble = addMsg(data.reply || '…', 'bot');
-    if (egOn && (voiceOn || convo)) egSpeak(data.reply || '', bubble); else if (data.audio && (voiceOn || convo)) playReply(data.audio, data.audioMime, bubble); else if (convo) listenAgain();
+    if (egOn && wantV) egSpeak(data.reply || '', bubble); else if (data.audio && wantV) playReply(data.audio, data.audioMime, bubble); else if (convo) listenAgain();
   } catch (e) {
     if (convo) listenAgain();
     thinking.remove();
